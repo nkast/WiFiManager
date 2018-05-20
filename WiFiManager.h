@@ -92,6 +92,12 @@ class WiFiManager
     boolean       startConfigPortal();
     boolean       startConfigPortal(char const *apName, char const *apPassword = NULL);
 
+	boolean       beginConnect();
+	boolean       beginConnect(char const *apName, char const *apPassword = NULL);
+    void          beginConfigPortal();
+    void          beginConfigPortal(char const *apName, char const *apPassword = NULL);
+    boolean       tryConnect();
+
     // get the AP name of the config portal, so it can be used in the callback
     String        getConfigPortalSSID();
 
