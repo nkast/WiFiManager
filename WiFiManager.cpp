@@ -274,6 +274,122 @@ boolean  WiFiManager::startConfigPortal(char const *apName, char const *apPasswo
 }
 
 
+
+boolean WiFiManager::beginConnect()
+{
+	String ssid = "ESP" + String(ESP_getChipId());
+	return beginConnect(ssid.c_str(), NULL);
+}
+
+boolean WiFiManager::beginConnect(char const *apName, char const *apPassword)
+{
+	DEBUG_WM(F(""));
+	DEBUG_WM(F("BeginConnect"));
+
+	// read eeprom for ssid and pass
+	//String ssid = getSSID();
+	//String pass = getPassword();
+
+	// attempt to connect; should it fail, fall back to AP
+	WiFi.mode(WIFI_STA);
+
+	if (connectWifi("", "") == WL_CONNECTED) 
+	{
+		DEBUG_WM(F("IP Address:"));
+		DEBUG_WM(WiFi.localIP());
+		//connected
+		return true;
+	}
+
+	beginConfigPortal(apName, apPassword);
+	return false;
+}
+
+void  WiFiManager::beginConfigPortal()
+{
+	String ssid = "ESP" + String(ESP_getChipId());
+	beginConfigPortal(ssid.c_str(), NULL);
+}
+
+void  WiFiManager::beginConfigPortal(char const *apName, char const *apPassword)
+{
+	//setup AP
+	WiFi.mode(WIFI_AP_STA);
+	DEBUG_WM("SET AP STA");
+
+	_apName = apName;
+	_apPassword = apPassword;
+
+	//notify we entered AP mode
+	if (_apcallback != NULL)
+	{
+		_apcallback(this);
+	}
+
+	connect = false;
+	setupConfigPortal();
+}
+
+boolean WiFiManager::tryConnect()
+{
+	// check if timeout
+	if (configPortalHasTimeout()) false;
+
+	// Process DNS request and web server request
+	dnsServer->processNextRequest();
+	server->handleClient();
+
+	// If some data about an AP has been saved, try to connect to it
+	if (connect)
+	{
+		connect = false;
+		delay(2000);
+		DEBUG_WM(F("Connecting to new AP"));
+
+		// Using user-provided  _ssid, _pass in place of system-stored ssid and pass
+		WiFi.softAPdisconnect(true);
+		uint8_t connectResult = connectWifi(_ssid, _pass);
+		if (connectResult != WL_CONNECTED)
+		{
+			DEBUG_WM(F("Failed to connect."));
+			if (_shouldBreakAfterConfig)
+			{
+				//flag set to exit after config after trying to connect
+				//notify that configuration has changed and any optional parameters should be saved
+				if (_savecallback != NULL)
+				{
+					//todo: check if any custom parameters actually exist, and check if they really changed maybe
+					_savecallback();
+				}
+				server.reset();
+				dnsServer.reset();
+				return false;
+			}
+		}
+		else
+		{
+			WiFi.mode(WIFI_STA);
+
+			DEBUG_WM(F("IP Address:"));
+			DEBUG_WM(WiFi.localIP());
+
+			//notify that configuration has changed and any optional parameters should be saved
+			if (_savecallback != NULL)
+			{
+				//todo: check if any custom parameters actually exist, and check if they really changed maybe
+				_savecallback();
+			}
+			server.reset();
+			dnsServer.reset();
+			return  true;
+		}
+	}
+
+	return false;
+}
+
+
+
 int WiFiManager::connectWifi(String ssid, String pass) {
   DEBUG_WM(F("Connecting as wifi client..."));
 
