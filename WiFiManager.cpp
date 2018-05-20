@@ -106,7 +106,11 @@ bool WiFiManager::addParameter(WiFiManagerParameter *p) {
 
 void WiFiManager::setupConfigPortal() {
   dnsServer.reset(new DNSServer());
+#ifdef ESP8266
   server.reset(new ESP8266WebServer(80));
+#else
+  server.reset(new WebServer(80));
+#endif
 
   DEBUG_WM(F(""));
   _configPortalStart = millis();
@@ -158,7 +162,7 @@ void WiFiManager::setupConfigPortal() {
 }
 
 boolean WiFiManager::autoConnect() {
-  String ssid = "ESP" + String(ESP.getChipId());
+  String ssid = "ESP" + String(ESP_getChipId());
   return autoConnect(ssid.c_str(), NULL);
 }
 
@@ -184,7 +188,11 @@ boolean WiFiManager::autoConnect(char const *apName, char const *apPassword) {
 }
 
 boolean WiFiManager::configPortalHasTimeout(){
+#if defined(ESP8266)
     if(_configPortalTimeout == 0 || wifi_softap_get_station_num() > 0){
+#else
+    if(_configPortalTimeout == 0){ // || (wifi_softap_get_station_num() > 0)
+#endif
       _configPortalStart = millis(); // kludge, bump configportal start time to skew timeouts
       return false;
     }
@@ -192,7 +200,7 @@ boolean WiFiManager::configPortalHasTimeout(){
 }
 
 boolean WiFiManager::startConfigPortal() {
-  String ssid = "ESP" + String(ESP.getChipId());
+  String ssid = "ESP" + String(ESP_getChipId());
   return startConfigPortal(ssid.c_str(), NULL);
 }
 
@@ -286,10 +294,14 @@ int WiFiManager::connectWifi(String ssid, String pass) {
   } else {
     if (WiFi.SSID()) {
       DEBUG_WM(F("Using last saved values, should be faster"));
+#if defined(ESP8266)
       //trying to fix connection in progress hanging
       ETS_UART_INTR_DISABLE();
       wifi_station_disconnect();
       ETS_UART_INTR_ENABLE();
+#else
+      esp_wifi_disconnect();
+#endif
 
       WiFi.begin();
     } else {
@@ -334,7 +346,11 @@ uint8_t WiFiManager::waitForConnectResult() {
 
 void WiFiManager::startWPS() {
   DEBUG_WM(F("START WPS"));
+#if defined(ESP8266)
   WiFi.beginWPSConfig();
+#else
+  DEBUG_WM("WPS not supported on ESP32 ");
+#endif
   DEBUG_WM(F("END WPS"));
 }
 /*
@@ -497,7 +513,11 @@ void WiFiManager::handleWifi(boolean scan) {
           rssiQ += quality;
           item.replace("{v}", WiFi.SSID(indices[i]));
           item.replace("{r}", rssiQ);
+#if defined(ESP8266)
           if (WiFi.encryptionType(indices[i]) != ENC_TYPE_NONE) {
+#else
+          if (WiFi.encryptionType(indices[i]) != WIFI_AUTH_OPEN) {
+#endif
             item.replace("{i}", "l");
           } else {
             item.replace("{i}", "");
@@ -656,16 +676,24 @@ void WiFiManager::handleInfo() {
   page += FPSTR(HTTP_HEAD_END);
   page += F("<dl>");
   page += F("<dt>Chip ID</dt><dd>");
-  page += ESP.getChipId();
+  page += ESP_getChipId();
   page += F("</dd>");
   page += F("<dt>Flash Chip ID</dt><dd>");
+#if defined(ESP8266)
   page += ESP.getFlashChipId();
+#else
+  page += F("Method 'ESP.getFlashChipId()' not Supported on ESP32");
+#endif
   page += F("</dd>");
   page += F("<dt>IDE Flash Size</dt><dd>");
   page += ESP.getFlashChipSize();
   page += F(" bytes</dd>");
   page += F("<dt>Real Flash Size</dt><dd>");
+#if defined(ESP8266)
   page += ESP.getFlashChipRealSize();
+#else
+F("Method 'ESP.getFlashChipRealSize()' not Supported on ESP32");
+#endif
   page += F(" bytes</dd>");
   page += F("<dt>Soft AP IP</dt><dd>");
   page += WiFi.softAPIP().toString();
@@ -703,7 +731,11 @@ void WiFiManager::handleReset() {
 
   DEBUG_WM(F("Sent reset page"));
   delay(5000);
+#if defined(ESP8266)
   ESP.reset();
+#else
+  ESP.restart();
+#endif
   delay(2000);
 }
 
