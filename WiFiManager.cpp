@@ -234,6 +234,10 @@ boolean  WiFiManager::startConfigPortal(char const *apName, char const *apPasswo
       } else {
         //connected
         WiFi.mode(WIFI_STA);
+
+        DEBUG_WM(F("IP Address:"));
+        DEBUG_WM(WiFi.localIP());
+
         //notify that configuration has changed and any optional parameters should be saved
         if ( _savecallback != NULL) {
           //todo: check if any custom parameters actually exist, and check if they really changed maybe
