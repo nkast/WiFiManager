@@ -22,6 +22,9 @@
 
 // #include "soc/efuse_reg.h" // include to add efuse chip rev to info, getChipRevision() is almost always the same though, so not sure why it matters.
 
+// #define esp32autoreconnect    // implement esp32 autoreconnect event listener kludge
+// autoreconnect status WORKING https://github.com/espressif/arduino-esp32/issues/653#issuecomment-405604766
+
 #define WM_WEBSERVERSHIM      // use webserver shim lib
 
 #ifdef ESP8266
@@ -48,12 +51,11 @@
     #define WM_WIFIOPEN   WIFI_AUTH_OPEN
 
     #ifndef WEBSERVER_H
-        #warning "WEBSERVER not implemented in espressif/esp32, see readme notes"
         #ifdef WM_WEBSERVERSHIM
             #include <WebServer.h>
         #else
             #include <ESP8266WebServer.h>
-            // Forthcoming official
+            // Forthcoming official ?
             // https://github.com/esp8266/ESPWebServer
         #endif
     #endif
@@ -170,7 +172,7 @@ class WiFiManager
     void          setSaveConnectTimeout(unsigned long seconds);
     // toggle debug output
     void          setDebugOutput(boolean debug);
-    //defaults to not showing anything under 8% signal quality if called
+    //set min quality percentage to include in scan, defaults to 8% if not specified
     void          setMinimumSignalQuality(int quality = 8);
     //sets a custom ip /gateway /subnet configuration
     void          setAPStaticIPConfig(IPAddress ip, IPAddress gw, IPAddress sn);
@@ -179,9 +181,9 @@ class WiFiManager
     //sets config for a static IP with DNS
     void          setSTAStaticIPConfig(IPAddress ip, IPAddress gw, IPAddress sn, IPAddress dns);
     //called when AP mode and config portal is started
-    void          setAPCallback( void (*func)(WiFiManager*) );
+    void          setAPCallback( std::function<void(WiFiManager*)> func );
     //called when settings have been changed and connection was successful
-    void          setSaveConfigCallback( void (*func)(void) );
+    void          setSaveConfigCallback( std::function<void()> func );
     //adds a custom parameter, returns false on failure
     bool          addParameter(WiFiManagerParameter *p);
     //if this is set, it will exit after config, even if connection is unsuccessful.
@@ -233,6 +235,11 @@ class WiFiManager
     // debug output platform info and versioning
     void          debugPlatformInfo();
     String        htmlEntities(String str);
+    
+    // set the country code for wifi settings
+    void          setCountry(String cc);
+    // set body class (invert)
+    void          setClass(String str);
 
   private:
     std::unique_ptr<DNSServer>        dnsServer;
@@ -291,7 +298,6 @@ class WiFiManager
     int            _staShowDns            = 0;     // ternary always show dns, only if not set in code, never(cannot change dns via web!)
     boolean       _removeDuplicateAPs     = true;  // remove dup aps from wifiscan
     boolean       _shouldBreakAfterConfig = false; // stop configportal on save failure
-    boolean       _tryWPS                 = false; // try WPS on save failure, unsupported
     boolean       _configPortalIsBlocking = true;  // configportal enters blocking loop 
     boolean       _enableCaptivePortal    = true;  // enable captive portal redirection
     boolean       _userpersistent         = true;  // users preffered persistence to restore
@@ -305,13 +311,27 @@ class WiFiManager
     const char *  _hostname               = "";
 
     const char*   _customHeadElement      = ""; // store custom head element html from user
+    String        _bodyClass              = ""; // class to add to body
 
     // internal options
     boolean       _preloadwifiscan        = true;  // preload wifiscan if true
     boolean       _disableIpFields        = false; // edge case, if true, showxFields(false) forces ip fields off instead of default show when set
 
+    String        _wificountry            = "";  // country code, @todo define in strings lang
+
+    // wrapper functions for handling setting and unsetting persistent for now.
+    bool          esp32persistent         = false;
+    bool          _hasBegun               = false;
+    void          _begin();
+    void          _end();
+
     void          setupConfigPortal();
+
+#ifdef NO_EXTRA_4K_HEAP
+    boolean       _tryWPS                 = false; // try WPS on save failure, unsupported
     void          startWPS();
+#endif
+
     bool          startAP();
 
     uint8_t       connectWifi(String ssid, String pass);
@@ -360,6 +380,7 @@ class WiFiManager
     bool          WiFi_scanNetworks();
     bool          WiFi_scanNetworks(bool force);
     bool          WiFi_scanNetworks(unsigned int cachetime);
+    bool          WiFiSetCountry();
 
     #ifdef ESP32
     static void   WiFiEvent(WiFiEvent_t event, system_event_info_t info);
@@ -407,7 +428,7 @@ class WiFiManager
     } wm_debuglevel_t;
 
     boolean       _debug              = true;
-    uint8_t       _debugLevel         = DEBUG_VERBOSE;
+    uint8_t       _debugLevel         = DEBUG_DEV;
     Stream&     _debugPort; // debug output stream ref
     
     template <typename Generic>
@@ -420,8 +441,8 @@ class WiFiManager
     void        DEBUG_WM(wm_debuglevel_t level, Generic text,Genericb textb);
 
     // callbacks
-    void (*_apcallback)(WiFiManager*) = NULL;
-    void (*_savecallback)(void)       = NULL;
+    std::function<void(WiFiManager*)> _apcallback;
+    std::function<void()> _savecallback;
 
     template <class T>
     auto optionalIPFromString(T *obj, const char *s) -> decltype(  obj->fromString(s)  ) {
